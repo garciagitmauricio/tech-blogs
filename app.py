@@ -2,11 +2,10 @@ import os
 import chainlit as cl
 import logging
 from dotenv import load_dotenv
-from azure.ai.projects import AIProjectClient
+
 from azure.identity import DefaultAzureCredential
-from azure.ai.projects.models import (
-    MessageRole,
-)
+from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import MessageRole
 
 # Load environment variables
 load_dotenv()
@@ -15,29 +14,34 @@ load_dotenv()
 logger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
 logger.setLevel(logging.WARNING)
 
-AIPROJECT_CONNECTION_STRING = os.getenv("AIPROJECT_CONNECTION_STRING")
+# ── Env vars ──────────────────────────────────────────────────────────────────
+# Example: https://<your-project>.<region>.inference.ai.azure.com
+AIPROJECT_ENDPOINT = os.getenv("AIPROJECT_ENDPOINT", "").rstrip("/")
 AGENT_ID = os.getenv("AGENT_ID")
 
-# Create an instance of the AIProjectClient using DefaultAzureCredential
-project_client = AIProjectClient.from_connection_string(
-    conn_str=AIPROJECT_CONNECTION_STRING, credential=DefaultAzureCredential()
-)
+if not AIPROJECT_ENDPOINT:
+    raise RuntimeError("AIPROJECT_ENDPOINT is not set in your environment (.env).")
+if not AGENT_ID:
+    raise RuntimeError("AGENT_ID is not set in your environment (.env).")
 
+# ── Auth & client ─────────────────────────────────────────────────────────────
+# DefaultAzureCredential will try Managed Identity, then env vars, then others.
+credential = DefaultAzureCredential()
+project_client = AIProjectClient(endpoint=AIPROJECT_ENDPOINT, credential=credential)
 
-# Chainlit setup
+# ── Chainlit ──────────────────────────────────────────────────────────────────
 @cl.on_chat_start
 async def on_chat_start():
     # Create a thread for the agent
     if not cl.user_session.get("thread_id"):
         thread = project_client.agents.create_thread()
-
         cl.user_session.set("thread_id", thread.id)
         print(f"New Thread ID: {thread.id}")
 
 @cl.on_message
 async def on_message(message: cl.Message):
     thread_id = cl.user_session.get("thread_id")
-    
+
     try:
         # Show thinking message to user
         msg = await cl.Message("thinking...", author="agent").send()
@@ -47,14 +51,17 @@ async def on_message(message: cl.Message):
             role="user",
             content=message.content,
         )
-        
-        # Run the agent to process tne message in the thread
-        run = project_client.agents.create_and_process_run(thread_id=thread_id, agent_id=AGENT_ID)
+
+        # Run the agent to process the message in the thread
+        run = project_client.agents.create_and_process_run(
+            thread_id=thread_id,
+            agent_id=AGENT_ID
+        )
         print(f"Run finished with status: {run.status}")
 
-        # Check if you got "Rate limit is exceeded.", then you want to increase the token limit
         if run.status == "failed":
-            raise Exception(run.last_error)
+            # Surface service-side error details if present
+            raise Exception(getattr(run, "last_error", "Run failed."))
 
         # Get all messages from the thread
         messages = project_client.agents.list_messages(thread_id)
