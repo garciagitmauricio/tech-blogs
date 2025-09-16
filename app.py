@@ -16,18 +16,18 @@ logger.setLevel(logging.WARNING)
 
 # ── Env vars ──────────────────────────────────────────────────────────────────
 # Example: https://<your-project>.<region>.inference.ai.azure.com
-AIPROJECT_ENDPOINT = os.getenv("AIPROJECT_ENDPOINT", "").rstrip("/")
+AIPROJECT_CONNECTION_STRING = os.getenv("AIPROJECT_CONNECTION_STRING", "").rstrip("/")
 AGENT_ID = os.getenv("AGENT_ID")
 
-if not AIPROJECT_ENDPOINT:
-    raise RuntimeError("AIPROJECT_ENDPOINT is not set in your environment (.env).")
+if not AIPROJECT_CONNECTION_STRING:
+    raise RuntimeError("AIPROJECT_CONNECTION_STRING is not set in your environment (.env).")
 if not AGENT_ID:
     raise RuntimeError("AGENT_ID is not set in your environment (.env).")
 
 # ── Auth & client ─────────────────────────────────────────────────────────────
 # DefaultAzureCredential will try Managed Identity, then env vars, then others.
 credential = DefaultAzureCredential()
-project_client = AIProjectClient(endpoint=AIPROJECT_ENDPOINT, credential=credential)
+project_client = AIProjectClient(endpoint=AIPROJECT_CONNECTION_STRING, credential=credential)
 
 def _message_text(msg) -> str | None:
     """Extract text robustly from an agent message."""
