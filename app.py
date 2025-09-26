@@ -7,23 +7,22 @@ from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
 from azure.ai.agents.models import MessageRole  # correct location
 
-# Load environment variables
+# ── Setup ─────────────────────────────────────────────────────────────────────
 load_dotenv()
-
-# Reduce verbose HTTP logging
-logger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
-logger.setLevel(logging.WARNING)
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
 
 # ── Env vars ──────────────────────────────────────────────────────────────────
-AIPROJECT_CONNECTION_STRING = os.getenv("AIPROJECT_CONNECTION_STRING", "").strip()
+# Must be an HTTPS Project Endpoint like:
+#   https://<ai-services-account>.services.ai.azure.com/api/projects/<project-name>
+AIPROJECT_ENDPOINT = os.getenv("AIPROJECT_ENDPOINT", "").strip()
 AGENT_ID = os.getenv("AGENT_ID", "").strip()
 
-if not AIPROJECT_CONNECTION_STRING:
-    raise RuntimeError("AIPROJECT_CONNECTION_STRING is not set in your environment (.env).")
-# Connection string must be 4 parts with NO scheme (no http/https)
-if AIPROJECT_CONNECTION_STRING.startswith(("http://", "https://")):
+if not AIPROJECT_ENDPOINT:
+    raise RuntimeError("AIPROJECT_ENDPOINT is not set in your environment (.env).")
+if not (AIPROJECT_ENDPOINT.startswith("https://") and "/api/projects/" in AIPROJECT_ENDPOINT):
     raise ValueError(
-        "AIPROJECT_CONNECTION_STRING must be '<region>.api.azureml.ms;<subscription-id>;<resource-group>;<project-name>' (no scheme)."
+        "AIPROJECT_ENDPOINT must look like "
+        "https://<ai-services-account>.services.ai.azure.com/api/projects/<project-name>"
     )
 if not AGENT_ID:
     raise RuntimeError("AGENT_ID is not set in your environment (.env).")
@@ -31,13 +30,10 @@ if not AGENT_ID:
 # ── Auth & client ─────────────────────────────────────────────────────────────
 # DefaultAzureCredential will try Managed Identity, then env vars, then others.
 credential = DefaultAzureCredential()
-project_client = AIProjectClient.from_connection_string(
-    conn_str=AIPROJECT_CONNECTION_STRING,
-    credential=credential,
-)
+project_client = AIProjectClient(endpoint=AIPROJECT_ENDPOINT, credential=credential)
 
 def _message_text(msg) -> str | None:
-    """Extract text robustly from an agent message."""
+    """Extract text robustly from an agent message (handles multiple SDK shapes)."""
     try:
         parts = getattr(msg, "content", None)
         if parts:
@@ -115,5 +111,6 @@ async def on_message(message: cl.Message):
 if __name__ == "__main__":
     # Chainlit will automatically run the application
     pass
+
 
 
